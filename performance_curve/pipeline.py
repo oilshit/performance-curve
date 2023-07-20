@@ -167,7 +167,7 @@ class Pipeline:
 
         return n_fr
 
-    def holdup_constant(self) -> Dict[str, [numeric] * 7]:
+    def holdup_constant(self) -> Dict[str, List[numeric]]:
         """
         get holdup constant and flow distribution
 
