@@ -8,8 +8,13 @@ pl = Pipeline({
 
     "q_gas": 1_000_000,
     "mu_gas": 0.0131,
+    "rho_gas": None,
     "sg_gas": 0.709,
     "z": 0.935,
+
+    "theta": 0,
+
+    "sigma": 30,
 
     "id": cvt.in_to_feet(2.259),
 
@@ -17,18 +22,12 @@ pl = Pipeline({
     "temperature": cvt.fahrenheit_to_rankine(175),
 })
 
-print(pl.sg_gas, pl.rho_gas)
-print(pl.superficial_velocity("liquid"))
-print(pl.superficial_velocity("gas"))
+rho_gas = pl.rho_gas
+print("Gas density (lbm/ft^3):", rho_gas)
 
-u_sl = pl.superficial_velocity("liquid")
-u_sg = pl.superficial_velocity("gas")
-u_m = pl.mixture_velocity(u_sl, u_sg)
-print(u_m)
+dp_dz = pl.dp_dz_friction()
 
-lambda_l, lambda_g = pl.input_fraction()
-print(lambda_l, lambda_g)
+print(pl.friction_factor_no_slip())
+print(pl.friction_factor_two_phase())
 
-holdup = pl.holdup_constant()
-print(holdup["type"])
-print(holdup["constants"])
+print("Pressure gradient (friction):", dp_dz, "psi/ft")

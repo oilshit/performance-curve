@@ -1,5 +1,5 @@
 from typing import Union, Dict, List, Tuple
-from math import log10, log, pi, pow
+from math import log10, log, pi, pow, sin, exp
 
 # import calculations.conversion as cvt
 
@@ -23,13 +23,16 @@ class Pipeline:
         self.rho_oil = props["rho_oil"]                 # oil density (lbm/ft^3)
         self.mu_oil = props["mu_oil"]                   # oil viscosity (cp)
 
+        self.sigma = props["sigma"]                   # oil viscosity (cp)
+
         self.q_gas = props["q_gas"]                     # gas flow rate (SCFD)
-        self.rho_gas = props["rho_oil"]                 # gas density (lbm/ft^3)
+        self.rho_gas = props["rho_gas"]                 # gas density (lbm/ft^3)
         self.mu_gas = props["mu_gas"]                   # gas viscosity (lbm/ft^3)
         self.sg_gas = props["sg_gas"]                   # gas specific gravity
         self.z = props["z"]                             # gas compressibiliy factor
         
         self.id = props["id"]                           # pipe inner diameter (ft)
+        self.theta = props["theta"] or 0                # elevation angle (default horizontal = 0)
 
         self.pressure = props["pressure"]               # pressure (psia)
         self.temperature = props["temperature"]         # temperatrue (oR)
@@ -124,6 +127,36 @@ class Pipeline:
         u_m = u_sg + u_sl
 
         return u_m
+    
+    def mixture_density(self) -> numeric:
+        """
+        get mixture density of liquid and gas in lbm/ft^3
+        
+        input: None
+
+        output:
+            rho_m: numeric
+        """
+
+        lambda_l, lambda_g = self.input_fraction()
+        rho_m = self.rho_oil * lambda_l + self.rho_gas * lambda_g
+
+        return rho_m
+    
+    def mixture_viscosity(self) -> numeric:
+        """
+        get mixture viscosity of liquid and gas in cp
+        
+        input: None
+
+        output:
+            mu_m: numeric
+        """
+
+        lambda_l, lambda_g = self.input_fraction()
+        mu_m = self.mu_oil * lambda_l + self.mu_gas * lambda_g
+
+        return mu_m
     
     def input_fraction(self) -> Tuple[numeric, numeric]:
         """
@@ -224,7 +257,101 @@ class Pipeline:
                 "constants": [1.065, 0.5824, 0.0609, 1, 0, 0, 0]
             }
 
+        a, b, c, d, e, f, g = flow["constants"]
+        n_vl = self.superficial_velocity("liquid") * pow(self.rho_oil / (32.17 * self.sigma), 0.25)
+        flow["C"] = (1 - lambda_l) * log(d * pow(lambda_l, e) * pow(n_vl, f) * pow(n_fr, g))
+
+        C = flow["C"]
+        flow["phi"] = 1 + C * (sin(1.8 * self.theta) - 0.333 * pow(sin(1.8 * self.theta), 3))
+
         return flow
     
-    def liquid_holdup():
-        pass
+    def liquid_holdup(self) -> numeric:
+        """
+        calculate y_l (liquid holdup)
+
+        input: None
+
+        output:
+            y_l: numeric
+        """
+        
+        flow = self.holdup_constant()
+        lambda_l, _ = self.input_fraction()
+        n_fr = self.froude_number()
+
+        a, b, c, _, _, _, _ = flow["constants"]
+        phi = flow["phi"]
+
+        y_lo = a * pow(lambda_l, b) / pow(n_fr, c)
+        y_l = y_lo * phi
+
+        return y_l
+    
+    def reynolds_number_mixture(self) -> numeric:
+        """
+        calculation of Reynolds Number
+
+        input: None
+
+        output:
+            n_re: numeric
+        """
+        u_sl, u_sg = self.superficial_velocity("liquid"), self.superficial_velocity("gas")
+        conversion = 1488
+        n_re = self.mixture_density() * self.mixture_velocity(u_sl, u_sg) * self.id * conversion / self.mixture_viscosity()
+
+        return n_re
+    
+    def friction_factor_no_slip(self) -> numeric:
+        """
+        calculate no-slip friction factor
+
+        input: None
+
+        output:
+            
+        """
+        n_re = self.reynolds_number_mixture()
+
+        f_ns = 0.0056 + (0.5 / pow(n_re, 0.32))
+
+        return f_ns
+    
+    def friction_factor_two_phase(self) -> numeric:
+        lambda_l, _ = self.input_fraction()
+        y_l = self.liquid_holdup()
+
+        f_ns = self.friction_factor_no_slip()
+
+        x = lambda_l / pow(y_l, 2)
+        ln_x = log(x)
+
+        A = -0.0523 + 3.182 * ln_x - 0.875 * pow(ln_x, 2) + 0.01853 * pow(ln_x, 4)
+        S = ln_x / A
+
+        f_tp = f_ns * exp(S)
+
+        return f_tp
+    
+    def dp_dz_friction(self):
+        """
+        calculate pressure gradient based on friction
+
+        input: None
+
+        output:
+            dp_dz (psi/ft): numeric
+        """
+
+        f_tp = self.friction_factor_two_phase()
+        rho_m = self.mixture_density()
+        
+        u_sl, u_sg = self.superficial_velocity("liquid"), self.superficial_velocity("gas")
+        u_m = self.mixture_velocity(u_sl, u_sg)
+
+        conversion = 0.006711409
+
+        dp_dz = 2 * f_tp * rho_m * pow(u_m, 2) * conversion / (GRAVITY * self.id)
+
+        return dp_dz
