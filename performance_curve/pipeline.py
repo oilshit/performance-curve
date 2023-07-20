@@ -23,7 +23,7 @@ class Pipeline:
         self.rho_oil = props["rho_oil"]                 # oil density (lbm/ft^3)
         self.mu_oil = props["mu_oil"]                   # oil viscosity (cp)
 
-        self.sigma = props["sigma"]                   # oil viscosity (cp)
+        self.sigma = props["sigma"]                     # interfacial tension (dynes/cm)
 
         self.q_gas = props["q_gas"]                     # gas flow rate (SCFD)
         self.rho_gas = props["rho_gas"]                 # gas density (lbm/ft^3)
@@ -209,6 +209,8 @@ class Pipeline:
         output: dict
             type: str
             constants: numeric[] (len = 7)
+            C: numeric
+            phi: numeric
         """
 
         flow = {
@@ -310,8 +312,9 @@ class Pipeline:
         input: None
 
         output:
-            
+            f_ns: numeric
         """
+
         n_re = self.reynolds_number_mixture()
 
         f_ns = 0.0056 + (0.5 / pow(n_re, 0.32))
@@ -319,6 +322,15 @@ class Pipeline:
         return f_ns
     
     def friction_factor_two_phase(self) -> numeric:
+        """
+        calculate two-phase friction factor
+
+        input: None
+
+        output:
+            f_tp: numeric
+        """
+
         lambda_l, _ = self.input_fraction()
         y_l = self.liquid_holdup()
 
